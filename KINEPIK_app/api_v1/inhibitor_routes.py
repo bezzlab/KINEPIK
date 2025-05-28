@@ -16,138 +16,89 @@ def instructions():
 def get_all_kinases():
     # connection to the database
     session = session_local()
-    kinases_json = []
-    phosphosites = request.args.get("phosphosites")
-    if phosphosites is not None:
-        phosphosites = int(phosphosites)
+    pert_json = []
+    pert_type = request.args.get("type")
 
     try:
-        if phosphosites == None or phosphosites == 0:
-            all_kinase_info = session.query(Protein).filter_by(kinase=1).all()
-            for kinase in all_kinase_info:
-                kinase_info = [{
-                        "UniprotID" : kinase.id,
-                        "UniprotName" : kinase.name,
-                        "KinaseInfo" : {
-                            "IsKinase" : kinase.kinase,
-                            "KinaseGroup" : kinase.kinase_group,
-                            "KinaseFamily" : kinase.kinase_family,
-                            "KinaseSubfamily" : kinase.kinase_subfamily
-                            },
-                        "Sequence" : kinase.sequence,
-                        "SequenceLength" : kinase.length,
-                        "Go-IDs" : kinase.go,
-                        "Description" : kinase.description,
-                        "GeneInfo" : {
-                            "MappedGene" : kinase.gene,
-                            "GeneSynonyms" : kinase.gene_synonyms
-                            },
-                        "OrganismID" : kinase.species                        }]
-                kinases_json.append(kinase_info)
-            return jsonify(kinases_json)
+        if pert_type == None or (pert_type and "small_molecule" in pert_type and "knockout" in pert_type):
+            all_inhibitor_info = session.query(Perturbation).all()
+            for inhibitor in all_inhibitor_info:
+                if inhibitor.type == "small molecule":
+                    inhibitor_info = [{
+                            "PerturbationName" : inhibitor.name,
+                            "Type" : inhibitor.type,
+                            "PubChemCID" :  inhibitor.pubchem,
+                            "SMILES" : inhibitor.smiles,
+                            "Action" : inhibitor.action,
+                            "Synonyms" : inhibitor.synonyms,
+                            }]
+                    pert_json.append(inhibitor_info)
+                elif inhibitor.type == "CRISPR knockout":
+                    inhibitor_info = [{
+                            "PerturbationName" : inhibitor.name,
+                            "Gene" : inhibitor.gene,
+                            "Type" : inhibitor.type,
+                            "Action" : inhibitor.action
+                            }]
+                    pert_json.append(inhibitor_info)
+            return jsonify(pert_json)
         
-        elif phosphosites == 1:
-            all_kinase_info = session.query(Protein).filter_by(kinase = 1).all()
-            for kinase in all_kinase_info:
-                kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = kinase.id).all()
-                target_phosphosites_info = session.query(Interaction).filter_by(source = kinase.id).all()
-                kinase_phos_list = []
-                target_phos_list = []
-                for k_phos in kinase_phosphosites_info:
-                    kinase_phos_list.append(k_phos.phosphosite_id)
-                for t_phos in target_phosphosites_info:
-                    target_phos_list.append(t_phos.phosphosite_id)
-                kinase_info = [{
-                        "UniprotID" : kinase.id,
-                        "UniprotName" : kinase.name,
-                        "KinaseInfo" : {
-                            "IsKinase" : kinase.kinase,
-                            "KinaseGroup" : kinase.kinase_group,
-                            "KinaseFamily" : kinase.kinase_family,
-                            "KinaseSubfamily" : kinase.kinase_subfamily
-                            },
-                        "TargetPhosphosites": target_phos_list,
-                        "PhosphositesOnKinase": kinase_phos_list,
-                        "Sequence" : kinase.sequence,
-                        "SequenceLength" : kinase.length,
-                        "Go-IDs" : kinase.go,
-                        "Description" : kinase.description,
-                        "GeneInfo" : {
-                            "MappedGene" : kinase.gene,
-                            "GeneSynonyms" : kinase.gene_synonyms
-                            },
-                        "OrganismID" : kinase.species                        
-                        }]
-                kinases_json.append(kinase_info)
-
-            return jsonify(kinases_json)
+        elif pert_type and "small_molecule" in pert_type:
+            all_inhibitor_info = session.query(Perturbation).filter(Perturbation.type =="small molecule").all()
+            for inhibitor in all_inhibitor_info:
+                inhibitor_info = [{
+                                "PerturbationName" : inhibitor.name,
+                                "Type" : inhibitor.type,
+                                "PubChemCID" :  inhibitor.pubchem,
+                                "SMILES" : inhibitor.smiles,
+                                "Action" : inhibitor.action,
+                                "Synonyms" : inhibitor.synonyms,
+                                }]
+                pert_json.append(inhibitor_info)
+            return jsonify(pert_json)
+        
+        elif pert_type and "knockout" in pert_type:
+            all_inhibitor_info = session.query(Perturbation).filter(Perturbation.type =="CRISPR knockout").all()
+            for inhibitor in all_inhibitor_info:
+                inhibitor_info = [{
+                                "PerturbationName" : inhibitor.name,
+                                "Gene" : inhibitor.gene,
+                                "Type" : inhibitor.type,
+                                "Action" : inhibitor.action
+                                }]
+                pert_json.append(inhibitor_info)
+            return jsonify(pert_json)
 
     finally:
         session.close()
 
 
-@kinase_bp.route("/specific", methods = ["GET"])
-def get_kinase():
+@inhibitor_bp.route("/specific", methods = ["GET"])
+def get_inhibitor():
     # connection to the database
     session = session_local()
-    kinases_json = []
-    kinase_ids = request.args.get("kinase_ids")
-    kinase_ids = kinase_ids.split(",")
-    phosphosites = request.args.get("phosphosites")
+    inhibitor_json = []
+    inhibitors = request.args.get("inhibitors")
+    if inhibitors is not None:
+        inhibitors = inhibitors.split(",")
 
     try:
-        if kinase_ids == None:
-            return 
+        if inhibitors == None:
+            return "Inhibitor name required for results"
         else:
-            if phosphosites == None:
-                for kin in kinase_ids:
-                    all_kinase_info = session.query(Protein).filter_by(id=kin).first()
-                    kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).all()
-                    target_phosphosites_info = session.query(Interaction).filter_by(source = all_kinase_info.id).all()
-                    kinase_phos_list = []
-                    target_phos_list = []
-                    for k_phos in kinase_phosphosites_info:
-                        kinase_phos_list.append(k_phos.phosphosite_id)
-                    for t_phos in target_phosphosites_info:
-                        target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
-                            "SourceUniprotID" : all_kinase_info.id,
-                            "UniprotName" : all_kinase_info.name,
-                            "TargetPhosphosites": target_phos_list,
-                            "PhosphositesOnKinase": kinase_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
-                    kinases_json.append(kinase_info)
-                return jsonify(kinases_json)
+            for inhibitor in inhibitors:
+                all_inhibitor_info = session.query(Perturbation_interaction).filter_by(perturbation = inhibitor).all()
+                kinase_list = []
+                for inhibit in all_inhibitor_info:
+                    if inhibit.target is not None:
+                        kinase_list.append(inhibit.target)
+                pert_info = [{
+                    "PerturbationName" : inhibitor,
+                    "TargetKinases" : kinase_list
+                    }]
+                inhibitor_json.append(pert_info)
             
-            elif phosphosites == "targets":
-                for kin in kinase_ids:
-                    all_kinase_info = session.query(Protein).filter_by(id = kin).first()
-                    target_phosphosites_info = session.query(Interaction).filter_by(source = all_kinase_info.id).all()
-                    target_phos_list = []
-                    for t_phos in target_phosphosites_info:
-                        target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
-                            "SourceUniprotID" : all_kinase_info.id,
-                            "UniprotName" : all_kinase_info.name,
-                            "TargetPhosphosites": target_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
-                    kinases_json.append(kinase_info)
-                return jsonify(kinases_json)
-            
-            elif phosphosites == "sites":
-                for kin in kinase_ids:
-                    all_kinase_info = session.query(Protein).filter_by(id = kin).first()
-                    kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).all()
-                    kinase_phos_list = []
-                    for k_phos in kinase_phosphosites_info:
-                        kinase_phos_list.append(k_phos.phosphosite_id)
-                    kinase_info = [{
-                            "SourceUniprotID" : all_kinase_info.id,
-                            "UniprotName" : all_kinase_info.name,
-                            "PhosphositesOnKinase": kinase_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
-                    kinases_json.append(kinase_info)
-                return jsonify(kinases_json)
+            return jsonify(inhibitor_json)
         
     finally:
         session.close()

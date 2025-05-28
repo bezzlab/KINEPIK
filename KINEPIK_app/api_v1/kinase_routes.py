@@ -94,16 +94,19 @@ def get_kinase():
     kinase_ids = request.args.get("kinase_ids")
     kinase_ids = kinase_ids.split(",")
     phosphosites = request.args.get("phosphosites")
+    phos_confidence = request.args.get("confidence")
+    if phos_confidence is not None:
+        phos_confidence = int(phos_confidence)
 
     try:
         if kinase_ids == None:
-            return 
+            return "Kinase id required for results"
         else:
-            if phosphosites == None:
+            if phosphosites == None and (phos_confidence == 0 or phos_confidence == None):
                 for kin in kinase_ids:
                     all_kinase_info = session.query(Protein).filter_by(id=kin).first()
                     kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).all()
-                    target_phosphosites_info = session.query(Interaction).filter_by(source = all_kinase_info.id).all()
+                    target_phosphosites_info = session.query(Interaction).filter(Interaction.source == all_kinase_info.id).filter(Interaction.target != all_kinase_info.id).all()
                     kinase_phos_list = []
                     target_phos_list = []
                     for k_phos in kinase_phosphosites_info:
@@ -118,11 +121,33 @@ def get_kinase():
                             "OrganismID" : all_kinase_info.species                        }]
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
+
+            elif phosphosites == None and phos_confidence == 1:
+                for kin in kinase_ids:
+                    all_kinase_info = session.query(Protein).filter_by(id=kin).first()
+                    kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).filter_by(confidence = "High").all()
+                    target_phosphosites_info = session.query(Interaction,Phosphosite).join(Phosphosite, Interaction.phosphosite_id == Phosphosite.phosphosite_id).filter(Interaction.source == all_kinase_info.id).filter(Phosphosite.confidence == "High").all()
+                    #target_phosphosites_info = session.query(Interaction).filter_by(source = all_kinase_info.id).filter_by(confidence = "high").all()
+                    kinase_phos_list = []
+                    target_phos_list = []
+                    for k_phos in kinase_phosphosites_info:
+                        kinase_phos_list.append(k_phos.phosphosite_id)
+                    for inter_id,t_phos in target_phosphosites_info:
+                        target_phos_list.append(t_phos.phosphosite_id)
+                    kinase_info = [{
+                            "SourceUniprotID" : all_kinase_info.id,
+                            "UniprotName" : all_kinase_info.name,
+                            "TargetPhosphosites": target_phos_list,
+                            "PhosphositesOnKinase": kinase_phos_list,
+                            "OrganismID" : all_kinase_info.species                        
+                            }]
+                    kinases_json.append(kinase_info)
+                return jsonify(kinases_json)
             
-            elif phosphosites == "targets":
+            elif phosphosites == "targets" and (phos_confidence == 0 or phos_confidence == None):
                 for kin in kinase_ids:
                     all_kinase_info = session.query(Protein).filter_by(id = kin).first()
-                    target_phosphosites_info = session.query(Interaction).filter_by(source = all_kinase_info.id).all()
+                    target_phosphosites_info = session.query(Interaction).filter(Interaction.source == all_kinase_info.id).filter(Interaction.target != all_kinase_info.id).all()
                     target_phos_list = []
                     for t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
@@ -134,10 +159,41 @@ def get_kinase():
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
-            elif phosphosites == "sites":
+            elif phosphosites == "targets" and phos_confidence == 1:
+                for kin in kinase_ids:
+                    all_kinase_info = session.query(Protein).filter_by(id = kin).first()
+                    target_phosphosites_info = session.query(Interaction,Phosphosite).join(Phosphosite, Interaction.phosphosite_id == Phosphosite.phosphosite_id).filter(Interaction.source == all_kinase_info.id).filter(Phosphosite.confidence == "High").all()
+                    target_phos_list = []
+                    for inter_id,t_phos in target_phosphosites_info:
+                        target_phos_list.append(t_phos.phosphosite_id)
+                    kinase_info = [{
+                            "SourceUniprotID" : all_kinase_info.id,
+                            "UniprotName" : all_kinase_info.name,
+                            "TargetPhosphosites": target_phos_list,
+                            "OrganismID" : all_kinase_info.species                        }]
+                    kinases_json.append(kinase_info)
+                return jsonify(kinases_json)
+            
+            
+            elif phosphosites == "sites" and phos_confidence == 0:
                 for kin in kinase_ids:
                     all_kinase_info = session.query(Protein).filter_by(id = kin).first()
                     kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).all()
+                    kinase_phos_list = []
+                    for k_phos in kinase_phosphosites_info:
+                        kinase_phos_list.append(k_phos.phosphosite_id)
+                    kinase_info = [{
+                            "SourceUniprotID" : all_kinase_info.id,
+                            "UniprotName" : all_kinase_info.name,
+                            "PhosphositesOnKinase": kinase_phos_list,
+                            "OrganismID" : all_kinase_info.species                        }]
+                    kinases_json.append(kinase_info)
+                return jsonify(kinases_json)
+            
+            elif phosphosites == "sites" and phos_confidence == 1:
+                for kin in kinase_ids:
+                    all_kinase_info = session.query(Protein).filter_by(id = kin).first()
+                    kinase_phosphosites_info = session.query(Phosphosite).filter_by(uniprot_id = all_kinase_info.id).filter_by(confidence = "High").all()
                     kinase_phos_list = []
                     for k_phos in kinase_phosphosites_info:
                         kinase_phos_list.append(k_phos.phosphosite_id)
