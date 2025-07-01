@@ -20,6 +20,7 @@ class Protein(Base):
     id = Column("Uniprot_ID", String(30), primary_key=True)
     name = Column("Uniprot_name", String(30))
     kinase = Column("Kinase", Integer)
+    kinase_type = Column("Kinase_type", String(30))
     kinase_group = Column("Kinase_group", String(50))
     kinase_family = Column("Kinase_family", String(50))
     kinase_subfamily = Column("Kinase_subfamily", String(50))
@@ -100,7 +101,7 @@ class Perturbation_interaction(Base):
     target = Column("Target_protein", String(30), ForeignKey("Protein.Uniprot_ID"))
     score = Column("Score", Numeric(20, 15))
     cell_line = Column("Cell_line", String(30), ForeignKey("Cell_line.Name"))
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Subcell_location(Base):
     __tablename__ = "Subcell_location"
@@ -113,7 +114,7 @@ class Subcell_location(Base):
     confidence_c = Column("Confidence_score_C", Numeric(25, 20))
     cell_line = Column("Cell_line", String(30), ForeignKey("Cell_line.Name"))
     species = Column("Species", Integer)
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Tissue_location(Base):
     __tablename__ = "Tissue_location"
@@ -135,7 +136,7 @@ class Experimental(Base):
     fc = Column("Fold_change", Numeric(30, 25))
     p_value = Column("p_value", Numeric(30, 25))
     sid = Column("SID_score", Numeric(30, 25))
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Study(Base):
     __tablename__ = "Study"

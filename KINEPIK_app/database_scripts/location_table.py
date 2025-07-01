@@ -9,6 +9,16 @@ import json
 from sqlalchemy.orm import sessionmaker
 from database_structure import Base, Subcell_location
 
+# # use this part if new tables needs to be created, otherwise will append the existing tables
+# engine = create_engine("sqlite+pysqlite:///KINEPIK.db", echo=True)
+
+# Session = sessionmaker(bind=engine)
+# session = Session()
+
+# # note by deleting cell line table you will also delete the manually added cell lines
+# Subcell_location.__table__.drop(engine)
+# Base.metadata.create_all(engine)
+
 def locCSVtoDF(file_name, sheet_name, reference):
     '''The function takes the file name, sheet name and the refernece id. It reads the file and based on the info in it, it will create a df that has most of
     the needed info for the Subcell_location sql table. The function returns a df'''
@@ -25,7 +35,7 @@ def locCSVtoDF(file_name, sheet_name, reference):
         ref.append(reference)
         # the sheet name is used as cell line name since the dataset uses cell lines as the sheet names
         cell_line.append(sheet_name)
-            
+        
     #print(data)
 
     # creating empty column lists that will be populated
@@ -111,7 +121,7 @@ def locCSVtoDF(file_name, sheet_name, reference):
     return df
 
 # getting subcell location info with locCSVtoDF function. Only one sheet is used in this case but others could be added too
-location_data = locCSVtoDF("mmc4.xlsx", "MCF7", "SubCellBarCode")
+location_data = locCSVtoDF("mmc4.xlsx", "MCF7", 0)
 #print(location_data)
 
 # creating a list of the proteins in the df

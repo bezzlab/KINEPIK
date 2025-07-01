@@ -1,0 +1,135 @@
+import sqlalchemy
+import pandas as pd
+import requests
+import os
+from sqlalchemy import create_engine
+from sqlalchemy import text
+import json
+from sqlalchemy.orm import sessionmaker
+from database_structure import Experimental, Phosphosite, Protein
+import ast
+
+# creating a connection and session to the database
+engine = create_engine("sqlite+pysqlite:///KINEPIK.db", echo=True)
+
+Session = sessionmaker(bind=engine)
+session = Session()
+
+def phosphositeDF(phos_list):
+    '''The function takes the list of phosphosites and then retuns a df for the Phosphosite table'''
+    phosphosite_col = []
+    uniprot_col = []
+    residue_col = []
+    loc_col = []
+    gene_col = []
+    sp_col = []
+    problem =[]
+    # the for loop is run based on the length of the df
+    for pho in phos_list:
+        # selecting the specific gene and residue info from the df and changing it to str so that it can be use in sql table
+        gene = str(pho[0].split("(")[0])
+        residue_type = pho[0].split("(")[1]
+        residue_type = str(residue_type[0])
+        sep = "(" + residue_type
+        residue_loc = pho[0].split(sep)[1]
+        residue_loc = str(residue_loc.replace(")",""))
+        # combining the variables together so that they are in right format for the phosphosite id
+        phosphosite_id = pho[0]
+        # the id is then added to the list and once the for loop is done the list is retuned
+        try:
+            protein_row = session.query(Protein).filter_by(gene=gene).first()
+            uniprot = protein_row.id
+            sp = protein_row.species
+        except:
+            # default if no genes found from the db
+            found = False
+            # list all the synonyms that are not None
+            syn_list = session.query(Protein).filter(Protein.gene_synonyms != None).all()
+            # go through the list row by row
+            for row in syn_list:
+                # try except keeps the loop going even if results not found
+                try:
+                    # changing the synonym list from string to an actual list
+                    synonyms = ast.literal_eval(row.gene_synonyms)
+                    # if the gene that was not found earlier is found from the synonym list the values are collect from the row
+                    if gene in synonyms:
+                        uniprot = row.id
+                        sp = row.species
+                        gene = row.gene
+                        found = True
+                except (ValueError, SyntaxError):
+                    continue
+            # if the gene name is not found from the synonyms then it is recorded as none and also listed as a problem gene for further info
+            if not found:
+                uniprot = None
+                sp = 9606
+                problem.append(gene)
+        print(phosphosite_id)
+
+        # adding all the variables to the column lists
+        phosphosite_col.append(phosphosite_id)
+        uniprot_col.append(uniprot)
+        residue_col.append(residue_type)
+        loc_col.append(residue_loc)
+        gene_col.append(gene)
+        sp_col.append(sp)
+
+        # combining the column lists togther into a df and returning that to the user
+        df = pd.DataFrame({"Phosphosite_ID":phosphosite_col, "Uniprot_ID":uniprot_col, "Residue":residue_col, "Location":loc_col, "Gene_name":gene_col, "Species":sp_col})
+    return df, problem
+
+phos_list = session.query(Experimental.phosphosite).distinct().all()
+
+# to collect only the phosphosites from the Experimental table that are not found from Phosphosite table
+old_phos = session.query(Phosphosite.phosphosite_id).distinct().all()
+new_phos = []
+for phos in phos_list:
+    if phos not in old_phos and phos not in new_phos:
+        new_phos.append(phos)
+
+phosphosite_table, problem = phosphositeDF(new_phos)
+print(phosphosite_table)
+print(set(problem))
+
+def addPhosphositeToSQL(phosphosite_table):
+    '''The function takes the df for Phosphosite sql table. It creates a connection the the db and populates it 
+    based on the give df'''
+    # connecting to the database and creating a session  
+    engine = create_engine("sqlite+pysqlite:///KINEPIK.db", echo=True)
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # defining the batch size
+    batch_size = 500
+    batch = []
+
+    # using a for loop and iterrows to go through all the rows in the df and then add that info for the variable
+    for i, row in phosphosite_table.iterrows():
+        phosphosite = Phosphosite(
+            phosphosite_id = row["Phosphosite_ID"],
+            uniprot_id = row["Uniprot_ID"],
+            residue = row["Residue"],
+            location = row["Location"],
+            gene = row["Gene_name"],
+            species = row["Species"]  
+        )
+        # the info will be added to the batch
+        batch.append(phosphosite)
+        
+        # when the number of inputs reaches the batch size the whole batch will be added to the sql table and the batch will be emptied after that
+        if (i + 1) % batch_size == 0:
+            session.add_all(batch)
+            session.commit()
+            batch = []
+    
+    # if there are some inputs left in the batch after the for loop those will be added to the sql table too
+    if batch:
+        session.add_all(batch)
+        session.commit()
+
+    # closing the connection to the db
+    session.close()
+
+# adding the Phosphosite info to the db
+addPhosphositeToSQL(phosphosite_table)

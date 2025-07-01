@@ -54,6 +54,7 @@ def get_protein():
             protein_infos = []
             # going through the list of uniprot ids given by the user
             for protein_id in protein_ids:
+                protein_id = protein_id.upper()
                 #print(protein_id)
                 # collecting alll the info about the protein in the user's list from the Protein-table that is in the database
                 all_protein_info = session.query(Protein).filter_by(id=protein_id).first()
