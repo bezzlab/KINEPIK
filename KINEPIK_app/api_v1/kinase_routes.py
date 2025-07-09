@@ -60,7 +60,7 @@ def get_all_kinases():
         if phosphosites == None or phosphosites == 0:
             all_kinase_info = session.query(Protein).filter_by(kinase=1).all()
             for kinase in all_kinase_info:
-                kinase_info = [{
+                kinase_info = {
                         "UniprotID" : kinase.id,
                         "UniprotName" : kinase.name,
                         "KinaseInfo" : {
@@ -77,7 +77,8 @@ def get_all_kinases():
                             "MappedGene" : kinase.gene,
                             "GeneSynonyms" : kinase.gene_synonyms
                             },
-                        "OrganismID" : kinase.species                        }]
+                        "OrganismID" : kinase.species                        
+                        }
                 kinases_json.append(kinase_info)
             return jsonify(kinases_json)
         
@@ -92,7 +93,7 @@ def get_all_kinases():
                     kinase_phos_list.append(k_phos.phosphosite_id)
                 for t_phos in target_phosphosites_info:
                     target_phos_list.append(t_phos.phosphosite_id)
-                kinase_info = [{
+                kinase_info = {
                         "UniprotID" : kinase.id,
                         "UniprotName" : kinase.name,
                         "KinaseInfo" : {
@@ -112,7 +113,7 @@ def get_all_kinases():
                             "GeneSynonyms" : kinase.gene_synonyms
                             },
                         "OrganismID" : kinase.species                        
-                        }]
+                        }
                 kinases_json.append(kinase_info)
 
             return jsonify(kinases_json)
@@ -171,13 +172,13 @@ def get_kinase():
                         kinase_phos_list.append(k_phos.phosphosite_id)
                     for inter_id,t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "TargetPhosphosites": target_phos_list,
                             "PhosphositesOnKinase": kinase_phos_list,
                             "OrganismID" : all_kinase_info.species                        
-                            }]
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -189,11 +190,12 @@ def get_kinase():
                     target_phos_list = []
                     for t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "TargetPhosphosites": target_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
+                            "OrganismID" : all_kinase_info.species                        
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -205,11 +207,12 @@ def get_kinase():
                     target_phos_list = []
                     for inter_id,t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "TargetPhosphosites": target_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
+                            "OrganismID" : all_kinase_info.species                        
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -222,11 +225,12 @@ def get_kinase():
                     kinase_phos_list = []
                     for k_phos in kinase_phosphosites_info:
                         kinase_phos_list.append(k_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "PhosphositesOnKinase": kinase_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
+                            "OrganismID" : all_kinase_info.species                        
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -238,11 +242,12 @@ def get_kinase():
                     kinase_phos_list = []
                     for k_phos in kinase_phosphosites_info:
                         kinase_phos_list.append(k_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "PhosphositesOnKinase": kinase_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
+                            "OrganismID" : all_kinase_info.species                        
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -258,12 +263,13 @@ def get_kinase():
                         kinase_phos_list.append(k_phos.phosphosite_id)
                     for t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "PhosphositesOnKinase": kinase_phos_list,
                             "TargetPhosphosites": target_phos_list,
-                            "OrganismID" : all_kinase_info.species                        }]
+                            "OrganismID" : all_kinase_info.species                        
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
             
@@ -280,13 +286,13 @@ def get_kinase():
                         kinase_phos_list.append(k_phos.phosphosite_id)
                     for inter_id,t_phos in target_phosphosites_info:
                         target_phos_list.append(t_phos.phosphosite_id)
-                    kinase_info = [{
+                    kinase_info = {
                             "SourceUniprotID" : all_kinase_info.id,
                             "UniprotName" : all_kinase_info.name,
                             "TargetPhosphosites": target_phos_list,
                             "PhosphositesOnKinase": kinase_phos_list,
                             "OrganismID" : all_kinase_info.species                        
-                            }]
+                            }
                     kinases_json.append(kinase_info)
                 return jsonify(kinases_json)
         
