@@ -130,8 +130,8 @@ class Tissue_location(Base):
 class Experimental(Base):
     __tablename__ = "Experimental"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    perturbation = Column("Perturbation", String(30), ForeignKey("Perturbation.PubChem_CID"))
-    phosphosite = Column("Phosphosite", String(30))
+    perturbation = Column("Perturbation", String(30), ForeignKey("Perturbation.Name"))
+    phosphosite = Column("Phosphosite", String(30), ForeignKey("Phosphosite.Phosphosite_ID"))
     cell_line = Column("Cell_line",String(30), ForeignKey("Cell_line.Name"))
     fc = Column("Fold_change", Numeric(30, 25))
     p_value = Column("p_value", Numeric(30, 25))
@@ -146,6 +146,15 @@ class Study(Base):
     author = Column("Author", String(100))
     desc = Column("Description", String(500))
     link = Column("Link", String(100))
+
+class Known_perturbations(Base):
+    __tablename__ = "Known_perturbations"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kinase = Column("Kinase", String(30), ForeignKey("Protein.Uniprot_ID"))
+    perturbation = Column("Perturbation", String(50), ForeignKey("Perturbation.Name"))
+    source = Column("Source", Integer, ForeignKey("Study.id"))
+    score = Column("Score", Numeric(30,25))
+
 
 # generating the metadata for the db based on the ORMs
 Base.metadata.create_all(engine)

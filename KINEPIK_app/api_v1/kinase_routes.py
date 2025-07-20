@@ -6,43 +6,35 @@ from KINEPIK_app.database_scripts.database_structure import Interaction, Phospho
 # naming the blueprint
 kinase_bp = Blueprint("kinase_bp", __name__, url_prefix="/api/kinases")
 
-@kinase_bp.route("/info/all", methods = ["GET"])
-def all_instructions():
+@kinase_bp.route("/info/<route>", methods = ["GET"])
+def all_instructions(route):
     '''This function hands out the user info about the possible parameters that can be given to the kinases queries. 
     The return returns the info from string/text to html which is then displayed to the user'''
     # information about the parameters
-    phosphosites_info = "phosphosites : 0 or 1"
-    # the format of the html page
-    info = f"""
-    <html>
-        <body>
-            <p>{phosphosites_info}</p>
-        </body>
-    </html>
-    """
-
-    # return changes the format of the string to html that will be displayed to the user
-    return Response(info, mimetype = "text/html")
-
-
-@kinase_bp.route("/info/specific", methods = ["GET"])
-def specific_instructions():
-    '''This function hands out the user info about the possible parameters that can be given to the kinases queries. 
-    The return returns the info from string/text to html which is then displayed to the user'''
-    # information about the parameters
-    kinase_id_info = "kinase_ids : uniprot ID, if multiple use comma as a separator"
+    phosphosites_info_all = "phosphosites : 0 or 1"
+    kinase_id_info = "kinase_ids : Uniprot ID, if multiple use comma (,) as a separator"
     phosphosites_info = "phosphosites : sites,targets"
     confidence_info = "confidence : 0 or 1"
-    # the format of the html page
-    info = f"""
-    <html>
-        <body>
-            <p>{kinase_id_info}</p>
-            <p>{phosphosites_info}</p>
-            <p>{confidence_info}</p>
-        </body>
-    </html>
-    """
+    # the format of the all html page
+    if route == all:
+        info = f"""
+        <html>
+            <body>
+                <p>{phosphosites_info_all}</p>
+            </body>
+        </html>
+        """
+    # the format of thespecific html page
+    if route == "specific":
+        info = f"""
+        <html>
+            <body>
+                <p>{kinase_id_info}</p>
+                <p>{phosphosites_info}</p>
+                <p>{confidence_info}</p>
+            </body>
+        </html>
+        """
 
     # return changes the format of the string to html that will be displayed to the user
     return Response(info, mimetype = "text/html")

@@ -10,11 +10,6 @@ protein_bp = Blueprint("protein_bp", __name__, url_prefix="/api/proteins")
 def instructions():
     '''This function hands out the user info about the possible parameters that can be given to the proteins queries. 
     The return returns the info from string/text to html which is then displayed to the user'''
-    # info = [{
-    #     "protein_ids" : "uniprot ID, if multiple use comma as a separator",
-    #     "fields" : "kinase, mappedgene"
-    # }]
-    # return jsonify(info)
 
     # information about the parameters
     protein_id_info = "protein_ids : uniprot ID, if multiple use comma as a separator"
