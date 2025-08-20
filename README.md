@@ -22,7 +22,7 @@ To run the app locally, follow these steps:
 `pip install -r requirements.txt`
 
 4. Download database and version history database from [here](https://qmulprod-my.sharepoint.com/:f:/r/personal/btw695_qmul_ac_uk/Documents/__shared-QM/kinepik/database?csf=1&web=1&e=kbRvlN). Add the database to the same directory as the application. Your directory should look like this:
-'''
+```
 KINEPIK
 ├── KINEPIK_app
 │   ├── api_v1
@@ -83,7 +83,7 @@ KINEPIK
 ├── update_KINEPIK.py
 ├── KINEPIK_v0.db
 └── KINEPIK_version.db
-'''
+```
 
 5. Start the application:
 `python application.py`
@@ -99,7 +99,7 @@ Once the app is running locally:
 
 ## Deployment
 To deploy the application, follow this folder structure:
-'''
+```
 KINEPIK
 ├── KINEPIK_app
 │   ├── api_v1
@@ -135,9 +135,10 @@ KINEPIK
 |
 ├── application.py
 ├── requirements.txt
+├── KINEPIK_version.py
 ├── KINEPIK_v0.db       # preferred version of the database
 └── KINEPIK_version.db
-'''
+```
 
 ## Database Versioning
 KINEPIK maintains a versioning system for reproducibility.  
