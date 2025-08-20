@@ -1,6 +1,6 @@
 from flask import Flask, flash, render_template, url_for, redirect, request, jsonify, json,Blueprint
 
-routes_bp = Blueprint("routes_bp", __name__, url_prefix="/testing")
+routes_bp = Blueprint("routes_bp", __name__, url_prefix="/")
 
 @routes_bp.route("/", methods = ["GET"])
 def index():

@@ -1,13 +1,15 @@
 from flask import Blueprint,jsonify, json, request, Response
 import pandas as pd
-from KINEPIK_app.database_con import session_local
+#from KINEPIK_app.database_con import session_local
+from KINEPIK_app.database_con import getSessionForVersion
 import ast
 from scipy.stats import norm
+from sqlalchemy import or_
 import numpy
 from KINEPIK_app.database_scripts.database_structure import Interaction, Phosphosite, Effect, Perturbation, Perturbation_interaction, Cell_line, Subcell_location, Tissue_location, Experimental, Protein, Gene, Known_perturbations
 
 # naming the blueprint
-inhibitor_bp = Blueprint("inhibitor_bp", __name__, url_prefix="/api/inhibitor")
+inhibitor_bp = Blueprint("inhibitor_bp", __name__, url_prefix="/api/<int:version>/perturbation")
 
 def formatList(list_form):
     '''Function formats a python list to a typical list format based on the number of items in the list, and then returns the list to the user'''
@@ -21,11 +23,12 @@ def formatList(list_form):
         return ", ".join(list_form[:-1]) + " and " + str(list_form[-1])
 
 @inhibitor_bp.route("/info/<route>", methods = ["GET"])
-def instructions(route):
-    '''This function hands out the user info about the possible parameters that can be given to the inhibitor queries. User will have to
+def instructions(version,route):
+    '''This function hands out the user info about the possible parameters that can be given to the perturbation queries. User will have to
     specify which route they want the parameters for.The function returns the info from string/text to html which is then displayed to the user'''
     # connection to the db
-    session = session_local()
+    Session = getSessionForVersion(version)
+    session = Session()
 
     # collecting the cell lines from the db
     cell_line_list = session.query(Experimental.cell_line).distinct().all()
@@ -36,11 +39,14 @@ def instructions(route):
     # information about the parameters
     cell_lines = "cell_line : available cell lines curretly are :" + formatList(cl_list)
     type = "type : small_molecule or knockout"
-    inhibitors = "common name of the inhibitor (list of all available inhibitors can be found with /api/inhibitor/all route)"
+    inhibitors = "perturbations : common name of the perturbation (list of all available perturbations can be found with /api/perturbation/all route)"
     kinase_ids = "kinase_ids : Uniprot ID, if multiple use comma (,) as a separator"
     phosphosite_confidence = "phosphosite_confidence : 0 or 1, with 1 only high confidence phosphosites will be used"
     autophosphorylation = "autophosphorylation : include or exclude"
     weighted = "weighted : true or false, if true, then all the calculations will be done by using weighted values and KinaseConfidence will be included in to the output"
+    names = "names : Uniprot IDs or common names of perturbations"
+    known = "known : true or false"
+    confidence = "confidence : decimal number"
     # the format of the html page for all route
     if route == "all":
         info = f"""
@@ -56,6 +62,17 @@ def instructions(route):
         <html>
             <body>
                 <p>{inhibitors}</p>
+            </body>
+        </html>
+        """
+    # the format of the html page for specific route
+    elif route == "available":
+        info = f"""
+        <html>
+            <body>
+                <p>{names}</p>
+                <p>{known}</p>
+                <p>{confidence}</p>
             </body>
         </html>
         """
@@ -89,11 +106,12 @@ def instructions(route):
     return Response(info, mimetype = "text/html")
 
 @inhibitor_bp.route("/all", methods = ["GET"])
-def get_all_kinases():
+def get_all_perturbations(version):
     '''Function collect all the information of the available pertubations in the db, and generates a json of all of them. User can select whether only
     show small molecules or gene knockout options.'''
     # connection to the database and getting values from user
-    session = session_local()
+    Session = getSessionForVersion(version)
+    session = Session()
     pert_json = []
     pert_type = request.args.get("type")
 
@@ -119,7 +137,7 @@ def get_all_kinases():
                             "PerturbationName" : inhibitor.name,
                             "Gene" : inhibitor.gene,
                             "Type" : inhibitor.type,
-                            "Actio" : inhibitor.action
+                            "Action" : inhibitor.action
                             }
                     pert_json.append(inhibitor_info)
             # returning all the collected info to the user
@@ -164,83 +182,140 @@ def get_all_kinases():
         session.close()
 
 
-@inhibitor_bp.route("/known", methods = ["GET"])
-def get_inhibitor():
-    '''Function gives the user list of the targets the given inhibitor has. The function returns the info in json format'''
+@inhibitor_bp.route("/available", methods = ["GET"])
+def get_inhibitor(version):
+    '''Function gives the user list of the target kinases the given inhibitor has or vice versa. The function returns the info in json format'''
     # connection to the database  and getting values from user
-    session = session_local()
+    Session = getSessionForVersion(version)
+    session = Session()
     inhibitor_json = []
+    # name of the inhibitor or the kinase required
     names = request.args.get("name")
+    confidence = request.args.get("confidence")
+    # if multiple names given they are split to list
     if names is not None:
         names = names.split(",")
+    if confidence is not None:
+        confidence = float(confidence)
 
     try:
-        all_kinases = session.query(Protein.id).all()
-        all_perts = session.query(Perturbation.name).all()
-        kinases = []
-        perts = []
-        for kin in all_kinases:
-            kinases.append(kin[0])
+        if names != None:
+            # collecting all the protein ids and common names of the perturbations
+            all_kinases = session.query(Protein.id).all()
+            all_perts = session.query(Perturbation.name).all()
+            kinases = []
+            perts = []
 
-        for pert in all_perts:
-            perts.append(pert[0])
-        
-        
-        direction = []
-        for n in names:
-            if n in kinases:
-                direction.append("kinase")
-            elif n in perts:
-                direction.append("inhibitor")
+            # the two for loops change the format of the lists from the sql table since it gives all the results in tuples
+            for kin in all_kinases:
+                kinases.append(kin[0])
+
+            for pert in all_perts:
+                perts.append(pert[0])
+            
+            # the for loop checks whether the given name is a kinase or a inhibitor and adds matching statement on the list
+            direction = []
+            for n in names:
+                if n in kinases:
+                    direction.append("kinase")
+                elif n in perts:
+                    direction.append("inhibitor")
 
 
-        # if the user hasn't input inhibitor(s), an error message will be shown because inhibitor name will be needed for this route
+        # if the user hasn't input name(s), an error message will be shown because name will be needed for this route
         if names == None:
-            return "Inhibitor name required for results"
+            return "At least one name required for results"
 
+        # if only one category of names is given the output can be generated for the user
         elif len(set(direction)) == 1:
+            # defining the category, kinase or inhibitor
             direction = direction[0]
-            if direction == "inhibitor":
-                # going through the list of inhibitors from the user
-                for name in names:
-                    # collecting info about the inhibitor from the db
-                    all_inhibitor_info = session.query(Known_perturbations).filter_by(perturbation = name).all() # this will need to be changed to known perturbations when the table is generated!!!!
-                    kinase_list = []
-                    # this for loop ensures that if the inhibitor is not found from the db or it doesn't have any kinases the function will be able to handle it. Only available inhibitors will be shown
-                    for inhibit in all_inhibitor_info:
-                        if inhibit.kinase is not None:
-                            kinase_list.append(inhibit.kinase)
-                    # saving the info in json format
-                    pert_info = {
-                        "PerturbationName" : name,
-                        "TargetKinases" : kinase_list
-                        }
-                    inhibitor_json.append(pert_info)
+
+            if confidence is not None:
+                if direction == "inhibitor":
+                    # going through the list of inhibitors from the user
+                    for name in names:
+                        # collecting info about the inhibitor from the db
+                        all_inhibitor_info1 = session.query(Known_perturbations).filter_by(perturbation = name).filter(or_(Known_perturbations.source == 10,Known_perturbations.source == 12)).filter(Known_perturbations.score <= confidence).all() 
+                        all_inhibitor_info2 = session.query(Known_perturbations).filter_by(perturbation = name).filter(Known_perturbations.source == 11).filter((1-Known_perturbations.score) <= confidence).all() 
+                        all_inhibitor_info = all_inhibitor_info1 + all_inhibitor_info2
+                        kinase_list = []
+                        # this for loop ensures that if the inhibitor is not found from the db or it doesn't have any kinases the function will be able to handle it. Only available inhibitors will be shown
+                        for inhibit in all_inhibitor_info:
+                            if inhibit.kinase is not None:
+                                kinase_list.append(inhibit.kinase)
+                        # saving the info in json format
+                        pert_info = {
+                            "PerturbationName" : name,
+                            "TargetKinases" : kinase_list
+                            }
+                        inhibitor_json.append(pert_info)
+                    
+                    # returning the list of json objects to the user
+                    return jsonify(inhibitor_json)
                 
-                # returnong the list of json objects to the user
-                return jsonify(inhibitor_json)
+                elif direction == "kinase":
+                    for name in names:
+                        # collecting info about the inhibitors based on the kinase from the db
+                        all_inhibitor_info1 = session.query(Known_perturbations).filter_by(kinase = name).filter(or_(Known_perturbations.source == 10,Known_perturbations.source == 12)).filter(Known_perturbations.score <= confidence).all() 
+                        all_inhibitor_info2 = session.query(Known_perturbations).filter_by(kinase = name).filter(Known_perturbations.source == 11).filter((1-Known_perturbations.score) <= confidence).all() 
+                        all_inhibitor_info = all_inhibitor_info1 + all_inhibitor_info2
+                        inhibitor_list = []
+                        # this for loop ensures that if the inhibitor is not found from the db or it doesn't have any kinases the function will be able to handle it. Only available inhibitors will be shown
+                        for kinase in all_inhibitor_info:
+                            if kinase.perturbation is not None:
+                                inhibitor_list.append(kinase.perturbation)
+                        # saving the info in json format
+                        pert_info = {
+                            "KinaseName" : name,
+                            "KnownPerturbations" : inhibitor_list
+                            }
+                        inhibitor_json.append(pert_info)
+                
+                    # returning the list of json objects to the user
+                    return jsonify(inhibitor_json)
             
-            elif direction == "kinase":
-                for name in names:
-                    # collecting info about the inhibitor from the db
-                    all_inhibitor_info = session.query(Known_perturbations).filter_by(kinase = name).all() # this will need to be changed to known perturbations when the table is generated!!!!
-                    inhibitor_list = []
-                    # this for loop ensures that if the inhibitor is not found from the db or it doesn't have any kinases the function will be able to handle it. Only available inhibitors will be shown
-                    for kinase in all_inhibitor_info:
-                        if kinase.perturbation is not None:
-                            inhibitor_list.append(kinase.perturbation)
-                    # saving the info in json format
-                    pert_info = {
-                        "KinaseName" : name,
-                        "KnownPerturbations" : inhibitor_list
-                        }
-                    inhibitor_json.append(pert_info)
-            
-                # returnong the list of json objects to the user
-                return jsonify(inhibitor_json)
-            
+            elif confidence is None:
+                if direction == "inhibitor":
+                    # going through the list of inhibitors from the user
+                    for name in names:
+                        # collecting info about the inhibitor from the db
+                        all_inhibitor_info = all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Experimental.perturbation == name).filter(Interaction.modification == "phosphorylation").all()
+                        kinase_list = []
+                        for exp, inter in all_inhibitor_info:
+                            if inter.target is not None:
+                                kinase_list.append(inter.target)
+                        kinase_list = list(set(kinase_list))
+                        pert_info = {
+                            "PerturbationName" : name,
+                            "AvailableTargetKinases" : kinase_list
+                            }
+                        inhibitor_json.append(pert_info)
+                    
+                    # returning the list of json objects to the user
+                    return jsonify(inhibitor_json)
+                
+                elif direction == "kinase":
+                    for name in names:
+                        # collecting info about the inhibitors based on the kinase from the db
+                        all_kin_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == name).filter(Interaction.modification == "phosphorylation").all()
+                        inhibitor_list = []
+                        for exp, inter in all_kin_info:
+                            if exp.perturbation is not None:
+                                inhibitor_list.append(exp.perturbation)
+                        inhibitor_list = list(set(inhibitor_list))
+                        pert_info = {
+                            "KinaseName" : name,
+                            "AvailablePerturbations" : inhibitor_list
+                            }
+                        inhibitor_json.append(pert_info)
+                
+                    # returning the list of json objects to the user
+                    return jsonify(inhibitor_json)
+        
+        # if names from both categories have inputed then this error message will be shown
         else:
-            return "The names are from different categories. Try again with only kinase ids or only inhibitor names."
+            return "The names are from different categories. Try again with only kinase ids or only perturbation names."
     
     
     # closing the session to the db once the function has finished
@@ -249,13 +324,16 @@ def get_inhibitor():
 
 
 @inhibitor_bp.route("/fc", methods = ["GET"])
-def get_fc():
+def get_fc(version):
     """The function gives the user the fc values based on the filters given. The results will be returned in json format."""
     # connection to the database and collecting the filters from the user
-    session = session_local()
-    kinases = request.args.get("kinase_id")
+    Session = getSessionForVersion(version)
+    session = Session()
+    type = request.args.get("type")
+    kinases = request.args.get("id")
     cell_line = request.args.get("cell_line")
     phosphosite_con = request.args.get("phosphosite_confidence")
+    sid_score = request.args.get("sid")
     # getting the available cell lines in order to check is users cell line is available or not in the db
     cell_line_list = session.query(Experimental.cell_line).distinct().all()
     cl_list = []
@@ -265,11 +343,15 @@ def get_fc():
     # changing the string 0 or 1 to int
     if phosphosite_con is not None:
         phosphosite_con = int(phosphosite_con)
+    if sid_score is not None:
+        sid_score = float(sid_score)
 
     try:
         fc_json = []
+        if type is None:
+            return "Type (source, target_kinase, target_phosphosite) is required for this route."
         # this if clause will handle the errors if the user does not input correct cell line name or doesn't add kinase ids
-        if (kinases == None and cell_line == None) or (kinases == None or(cell_line is not None and cell_line not in cl_list)):
+        elif (kinases == None and cell_line == None) or (kinases == None or(cell_line is not None and cell_line not in cl_list)):
             if not kinases and cell_line in cl_list:
                 return "Uniprot id required for results"
             elif cell_line not in cl_list and kinases:
@@ -280,138 +362,454 @@ def get_fc():
         else:
             # splitting the user input of kinases into a list so that they can be handled individually
             kinases = kinases.split(",")
+            if type == "source":
             # using this if clause if the user does not input phosphosite_confidence at all or inputs it as 0
-            if not phosphosite_con or phosphosite_con == 0:
-                # going through all the kinases individually
-                for kinase in kinases:
-                    # making sure the uniprot id from the user is in correct format
-                    kinase = kinase.upper()
-                    # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
-                    if not cell_line:
-                        all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").all()
-                    elif cell_line:
-                        all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").filter(Experimental.cell_line==cell_line).all()
-
-                    # going through the data from the tables
-                    for e_data, i_data in all_info:
-                        # kinase_num is to collect all the kinases that are linked to the phosphosite
-                        kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
-                        # kinase_ref is to collect the list of sources for the given kinase from the db
-                        kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
-                        #print(len(kinase_num))
-
-                        # num_kin saves the length of the kinase_num for the confidence calculation
-                        num_kin = len(kinase_num)
-
-                        # this for loop goes through kinase_num and records the highest number of references. The comparison is done between all the kinases that are linked to the phosphosite
-                        max_ref = 0
-                        for kin in kinase_num:
-                            #print(kin.references)
-                            if max_ref < len(ast.literal_eval(kin.references)):
-                                max_ref = len(ast.literal_eval(kin.references))
-
-                        #print(max_ref)
-                        # recording the length of the source list of given kinase
-                        ref_num = len(ast.literal_eval(kinase_ref.references))
-
-                        #print(ref_num)
-                        #print(ast.literal_eval(kinase_ref.references))
-
-                        # calculating the ref score by dividing the number of sources given kinase has divided by the max number of references (from the group of the kinases that phosphorylates the same phosphosite)
-                        # this is one of the indicators when determining how likely the given kinase is to be the one phosphorylating the phosphosite in experimental data
-                        ref_score = ref_num / max_ref
-                        uniqueness_penalty = 1 / num_kin
-                        # basic calculatopn for confidence if no weighthings added. This one can be used but can accidentally disregard kinase that is found from many sources but is not unique enough
-                        #confidence = ref_score * uniqueness_penalty
-                        # uniqueness less penalised with this calculation
-                        confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
-
-                        # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                if not phosphosite_con or phosphosite_con == 0:
+                    # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
                         if not cell_line:
-                            fc_info = {
-                                i_data.source : {
-                                    "Inhibitor" : e_data.perturbation,
-                                    "Phosphosite" : e_data.phosphosite,
-                                    "FC" : e_data.fc,
-                                    "KinaseConfidence" : confidence,
-                                    "CellLine" : cl_list
-                                    }
-                            }
-
-                        # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif cell_line:
-                            fc_info = {
-                                i_data.source : {
-                                    "Inhibitor" : e_data.perturbation,
-                                    "Phosphosite" : e_data.phosphosite,
-                                    "FC" : e_data.fc,
-                                    "KinaseConfidence" : confidence,
-                                    "CellLine" : cell_line
-                                    }
-                            }
-                        fc_json.append(fc_info)
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").filter(Experimental.cell_line==cell_line).all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").filter(Experimental.cell_line==cell_line).filter(Experimental.sid <= sid_score).all()
+
+                        # going through the data from the tables
+                        for e_data, i_data in all_info:
+                            # kinase_num is to collect all the kinases that are linked to the phosphosite
+                            kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                            # kinase_ref is to collect the list of sources for the given kinase from the db
+                            kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                            #print(len(kinase_num))
+
+                            # num_kin saves the length of the kinase_num for the confidence calculation
+                            num_kin = len(kinase_num)
+
+                            # this for loop goes through kinase_num and records the highest number of references. The comparison is done between all the kinases that are linked to the phosphosite
+                            max_ref = 0
+                            for kin in kinase_num:
+                                #print(kin.references)
+                                if max_ref < len(ast.literal_eval(kin.references)):
+                                    max_ref = len(ast.literal_eval(kin.references))
+
+                            #print(max_ref)
+                            # recording the length of the source list of given kinase
+                            ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                            #print(ref_num)
+                            #print(ast.literal_eval(kinase_ref.references))
+
+                            # calculating the ref score by dividing the number of sources given kinase has divided by the max number of references (from the group of the kinases that phosphorylates the same phosphosite)
+                            # this is one of the indicators when determining how likely the given kinase is to be the one phosphorylating the phosphosite in experimental data
+                            ref_score = ref_num / max_ref
+                            uniqueness_penalty = 1 / num_kin
+                            # basic calculatopn for confidence if no weighthings added. This one can be used but can accidentally disregard kinase that is found from many sources but is not unique enough
+                            #confidence = ref_score * uniqueness_penalty
+                            # uniqueness less penalised with this calculation
+                            confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    i_data.source : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "KinaseConfidence" : confidence,
+                                        "CellLine" : cl_list,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    i_data.source : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "KinaseConfidence" : confidence,
+                                        "CellLine" : cell_line,
+                                        "SID_score" : e_data.sid
+                                        }
+                                }
+                            fc_json.append(fc_info)
+                    
+                    # the full json is given to user
+                    return jsonify(fc_json)
                 
+                # this if clause applied another filter on the sql queries. In this case, adding filter where only High confidence phosphosites (that are found from Phosphosite table) are included in the data
+                elif phosphosite_con == 1:
+                    # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
+                        if not cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
+                        elif cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
+
+                        for e_data, i_data in all_info:
+                            kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                            kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                            #print(len(kinase_num))
+                            num_kin = len(kinase_num)
+                            max_ref = 0
+                            for kin in kinase_num:
+                                #print(kin.references)
+                                if max_ref < len(ast.literal_eval(kin.references)):
+                                    max_ref = len(ast.literal_eval(kin.references))
+
+                            #print(max_ref)
+                            ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                            #print(ref_num)
+                            #print(ast.literal_eval(kinase_ref.references))
+
+                            ref_score = ref_num / max_ref
+                            uniqueness_penalty = 1 / num_kin
+                            # basic calculatopn for confidence
+                            #confidence = ref_score * uniqueness_penalty
+                            # uniqueness less penalised?
+                            confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    i_data.source : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "KinaseConfidence" : confidence,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    i_data.source : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "KinaseConfidence" : confidence,
+                                        "CellLine" : cell_line,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+                            fc_json.append(fc_info)
+
+                    # the full json is given to user
+                    return jsonify(fc_json)
+            
+            elif type == "target_kinase":
+                if not phosphosite_con or phosphosite_con == 0:
+                # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
+                        if not cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Experimental.sid <= sid_score).all()
+                        elif cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Experimental.cell_line==cell_line).all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Experimental.cell_line==cell_line).filter(Experimental.sid <= sid_score).all()
+
+                        # going through the data from the tables
+                        for e_data, p_data in all_info:
+                            # # kinase_num is to collect all the kinases that are linked to the phosphosite
+                            # kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                            # # kinase_ref is to collect the list of sources for the given kinase from the db
+                            # kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                            # #print(len(kinase_num))
+
+                            # # num_kin saves the length of the kinase_num for the confidence calculation
+                            # num_kin = len(kinase_num)
+
+                            # # this for loop goes through kinase_num and records the highest number of references. The comparison is done between all the kinases that are linked to the phosphosite
+                            # max_ref = 0
+                            # for kin in kinase_num:
+                            #     #print(kin.references)
+                            #     if max_ref < len(ast.literal_eval(kin.references)):
+                            #         max_ref = len(ast.literal_eval(kin.references))
+
+                            # #print(max_ref)
+                            # # recording the length of the source list of given kinase
+                            # ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                            # #print(ref_num)
+                            # #print(ast.literal_eval(kinase_ref.references))
+
+                            # # calculating the ref score by dividing the number of sources given kinase has divided by the max number of references (from the group of the kinases that phosphorylates the same phosphosite)
+                            # # this is one of the indicators when determining how likely the given kinase is to be the one phosphorylating the phosphosite in experimental data
+                            # ref_score = ref_num / max_ref
+                            # uniqueness_penalty = 1 / num_kin
+                            # # basic calculatopn for confidence if no weighthings added. This one can be used but can accidentally disregard kinase that is found from many sources but is not unique enough
+                            # #confidence = ref_score * uniqueness_penalty
+                            # # uniqueness less penalised with this calculation
+                            # confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    p_data.uniprot_id : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cl_list,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    p_data.uniprot_id : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cell_line,
+                                        "SID_score" : e_data.sid
+                                        }
+                                }
+                            fc_json.append(fc_info)
+                    
+                    # the full json is given to user
+                    return jsonify(fc_json)
+            
+                # this if clause applied another filter on the sql queries. In this case, adding filter where only High confidence phosphosites (that are found from Phosphosite table) are included in the data
+                elif phosphosite_con == 1:
+                    # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
+                        if not cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Phosphosite.confidence == "High").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Phosphosite.confidence == "High").filter(Experimental.sid <= sid_score).all()
+                        elif cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Phosphosite.uniprot_id == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Experimental.sid <= sid_score).all()
+
+                        for e_data, p_data in all_info:
+                        #     kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                        #     kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                        #     #print(len(kinase_num))
+                        #     num_kin = len(kinase_num)
+                        #     max_ref = 0
+                        #     for kin in kinase_num:
+                        #         #print(kin.references)
+                        #         if max_ref < len(ast.literal_eval(kin.references)):
+                        #             max_ref = len(ast.literal_eval(kin.references))
+
+                        #     #print(max_ref)
+                        #     ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                        #     #print(ref_num)
+                        #     #print(ast.literal_eval(kinase_ref.references))
+
+                        #     ref_score = ref_num / max_ref
+                        #     uniqueness_penalty = 1 / num_kin
+                        #     # basic calculatopn for confidence
+                        #     #confidence = ref_score * uniqueness_penalty
+                        #     # uniqueness less penalised?
+                        #     confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    p_data.uniprot_id : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    p_data.uniprot_id : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "Phosphosite" : e_data.phosphosite,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cell_line,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+                            fc_json.append(fc_info)
+
+                    # the full json is given to user
+                    return jsonify(fc_json)
+
+            elif type == "target_phosphosite":
+                if not phosphosite_con or phosphosite_con == 0:
+                # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
+                        if not cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Experimental.sid <= sid_score).all()
+                        elif cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Experimental.cell_line==cell_line).all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Experimental.cell_line==cell_line).filter(Experimental.sid <= sid_score).all()
+
+                        # going through the data from the tables
+                        for e_data, p_data in all_info:
+                            # # kinase_num is to collect all the kinases that are linked to the phosphosite
+                            # kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                            # # kinase_ref is to collect the list of sources for the given kinase from the db
+                            # kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                            # #print(len(kinase_num))
+
+                            # # num_kin saves the length of the kinase_num for the confidence calculation
+                            # num_kin = len(kinase_num)
+
+                            # # this for loop goes through kinase_num and records the highest number of references. The comparison is done between all the kinases that are linked to the phosphosite
+                            # max_ref = 0
+                            # for kin in kinase_num:
+                            #     #print(kin.references)
+                            #     if max_ref < len(ast.literal_eval(kin.references)):
+                            #         max_ref = len(ast.literal_eval(kin.references))
+
+                            # #print(max_ref)
+                            # # recording the length of the source list of given kinase
+                            # ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                            # #print(ref_num)
+                            # #print(ast.literal_eval(kinase_ref.references))
+
+                            # # calculating the ref score by dividing the number of sources given kinase has divided by the max number of references (from the group of the kinases that phosphorylates the same phosphosite)
+                            # # this is one of the indicators when determining how likely the given kinase is to be the one phosphorylating the phosphosite in experimental data
+                            # ref_score = ref_num / max_ref
+                            # uniqueness_penalty = 1 / num_kin
+                            # # basic calculatopn for confidence if no weighthings added. This one can be used but can accidentally disregard kinase that is found from many sources but is not unique enough
+                            # #confidence = ref_score * uniqueness_penalty
+                            # # uniqueness less penalised with this calculation
+                            # confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    e_data.phosphosite : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cl_list,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    e_data.phosphosite : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cell_line,
+                                        "SID_score" : e_data.sid
+                                        }
+                                }
+                            fc_json.append(fc_info)
+                    
+                    # the full json is given to user
+                    return jsonify(fc_json)
+            
+                # this if clause applied another filter on the sql queries. In this case, adding filter where only High confidence phosphosites (that are found from Phosphosite table) are included in the data
+                elif phosphosite_con == 1:
+                    # going through all the kinases individually
+                    for kinase in kinases:
+                        # making sure the uniprot id from the user is in correct format
+                        kinase = kinase.upper()
+                        # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
+                        if not cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Phosphosite.confidence == "High").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Phosphosite.confidence == "High").filter(Experimental.sid <= sid_score).all()
+                        elif cell_line:
+                            if not sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental,Phosphosite).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Experimental.phosphosite == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Experimental.sid <= sid_score).all()
+
+                        for e_data, i_data in all_info:
+                        #     kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
+                        #     kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
+                        #     #print(len(kinase_num))
+                        #     num_kin = len(kinase_num)
+                        #     max_ref = 0
+                        #     for kin in kinase_num:
+                        #         #print(kin.references)
+                        #         if max_ref < len(ast.literal_eval(kin.references)):
+                        #             max_ref = len(ast.literal_eval(kin.references))
+
+                        #     #print(max_ref)
+                        #     ref_num = len(ast.literal_eval(kinase_ref.references))
+
+                        #     #print(ref_num)
+                        #     #print(ast.literal_eval(kinase_ref.references))
+
+                        #     ref_score = ref_num / max_ref
+                        #     uniqueness_penalty = 1 / num_kin
+                        #     # basic calculatopn for confidence
+                        #     #confidence = ref_score * uniqueness_penalty
+                        #     # uniqueness less penalised?
+                        #     confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
+
+                            # if cell line is not added to the filter all the fc values for given kinase will be recorded regardless of the cell lines.
+                            if not cell_line:
+                                fc_info = {
+                                    e_data.phosphosite : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "FC" : e_data.fc,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+
+                            # if cell line is added then just the fc values regarding that cell line will be added to the output json
+                            elif cell_line:
+                                fc_info = {
+                                    e_data.phosphosite : {
+                                        "Perturbation" : e_data.perturbation,
+                                        "FC" : e_data.fc,
+                                        "CellLine" : cell_line,
+                                        "SID-score" : e_data.sid
+                                        }
+                                }
+                        fc_json.append(fc_info)
+
                 # the full json is given to user
                 return jsonify(fc_json)
-            
-            # this if clause applied another filter on the sql queries. In this case, adding filter where only High confidence phosphosites (that are found from Phosphosite table) are included in the data
-            elif phosphosite_con == 1:
-                # going through all the kinases individually
-                for kinase in kinases:
-                    # making sure the uniprot id from the user is in correct format
-                    kinase = kinase.upper()
-                    # collecting data regarding the kinase from Interaction and Experimental tables based on the cell line filter user has given. The Interaction and Experimental table are joined due to the fact that Experimental table doesn't have phosphorylating kinases marked
-                    if not cell_line:
-                        all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-                    elif cell_line:
-                        all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-
-                    for e_data, i_data in all_info:
-                        kinase_num = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.modification == "phosphorylation").all()
-                        kinase_ref = session.query(Interaction).filter(Interaction.phosphosite_id == e_data.phosphosite).filter(Interaction.source == i_data.source).filter(Interaction.modification == "phosphorylation").first()
-                        #print(len(kinase_num))
-                        num_kin = len(kinase_num)
-                        max_ref = 0
-                        for kin in kinase_num:
-                            #print(kin.references)
-                            if max_ref < len(ast.literal_eval(kin.references)):
-                                max_ref = len(ast.literal_eval(kin.references))
-
-                        #print(max_ref)
-                        ref_num = len(ast.literal_eval(kinase_ref.references))
-
-                        #print(ref_num)
-                        #print(ast.literal_eval(kinase_ref.references))
-
-                        ref_score = ref_num / max_ref
-                        uniqueness_penalty = 1 / num_kin
-                        # basic calculatopn for confidence
-                        #confidence = ref_score * uniqueness_penalty
-                        # uniqueness less penalised?
-                        confidence = (0.8 * ref_score + 0.2 * uniqueness_penalty) / (0.8 + 0.2)
-
-                        if not cell_line:
-                            fc_info = {
-                                i_data.source : {
-                                    "Inhibitor" : e_data.perturbation,
-                                    "Phosphosite" : e_data.phosphosite,
-                                    "FC" : e_data.fc,
-                                    "KinaseConfidence" : confidence
-                                    }
-                            }
-                        elif cell_line:
-                            fc_info = {
-                                i_data.source : {
-                                    "Inhibitor" : e_data.perturbation,
-                                    "Phosphosite" : e_data.phosphosite,
-                                    "FC" : e_data.fc,
-                                    "KinaseConfidence" : confidence,
-                                    "CellLine" : cell_line
-                                    }
-                            }
-                        fc_json.append(fc_info)
-                
-                return jsonify(fc_json)
+        
             
     # closing the session to the db once the function has finished    
     finally:
@@ -427,21 +825,25 @@ def calculate_weighted_sd(fcs, weights):
     return numpy.sqrt(numerator / denominator)
 
 @inhibitor_bp.route("/KSEA", methods = ["GET"])
-def get_ksea():
-    session = session_local()
+def get_ksea(version):
+    Session = getSessionForVersion(version)
+    session = Session()
     ksea_json = []
     kinases = request.args.get("kinase_ids")
-    inhibitors = request.args.get("inhibitors")
+    inhibitors = request.args.get("perturbations")
     cell_line = request.args.get("cell_line")
     autophosphorylation = request.args.get("autophosphorylation")
     weighted = request.args.get("weighted")
     phosphosite_con = request.args.get("phosphosite_confidence")
+    sid_score = request.args.get("sid")
     if kinases is not None:
         kinases = kinases.split(",")
     if inhibitors is not None:
         inhibitors = inhibitors.split(",")
     if phosphosite_con is not None:
         phosphosite_con = int(phosphosite_con)
+    if sid_score is not None:
+        sid_score = float(sid_score)
 
     cell_line_list = session.query(Experimental.cell_line).distinct().all()
     cl_list = []
@@ -481,7 +883,10 @@ def get_ksea():
                     #print(len(inter_list))
                     #print(len(inter_distinct))
 
-                    phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).all()
+                    if sid_score == None:
+                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).all()
+                    elif sid_score is not None:
+                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.sid<=sid_score).all()
 
                     phos_list = []
                     fc_list = []
@@ -505,16 +910,28 @@ def get_ksea():
                     if autophosphorylation == "include" or not autophosphorylation:
                         #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).all()
                         if not phosphosite_con or phosphosite_con == 0:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif phosphosite_con ==  1:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                     elif autophosphorylation == "exclude":
                         #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).all()
                         if not phosphosite_con or phosphosite_con == 0:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif phosphosite_con ==  1:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-                    
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
+
                     kin_list = []
                     phos_list = []
                     fc_list = []
@@ -607,12 +1024,17 @@ def get_ksea():
                         # weighted calculations
                         weights = numpy.array(confidence_list)
                         fcs = numpy.array(fc_list)
+                        if numpy.sum(weights) == 0:
+                            weighted_mean = float("nan")
+                            weighted_sd = float("nan")
+                            z = float("nan")
+                            p_value = float("nan")
+                        else:
+                            weighted_mean = numpy.average(fcs, weights=weights)
+                            weighted_sd = calculate_weighted_sd(fcs, weights)
 
-                        weighted_mean = numpy.average(fcs, weights=weights)
-                        weighted_sd = calculate_weighted_sd(fcs, weights)
-
-                        z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
-                        p_value = norm.sf(abs(z))
+                            z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
+                            p_value = norm.sf(abs(z))
                         cell_list = set(cell_list)
                         #uniques_phos_list = set(phos_list)
                     
@@ -671,7 +1093,10 @@ def get_ksea():
                         #print(len(inter_list))
                         #print(len(inter_distinct))
                         
-                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).all()
+                        if sid_score is None:
+                            phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).all()
+                        elif sid_score is not None:
+                            phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).filter(Experimental.sid <= sid_score).all()
 
                         phos_list = []
                         fc_list = []
@@ -698,16 +1123,27 @@ def get_ksea():
                         if autophosphorylation == "include" or not autophosphorylation:
                             #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).all()
                             if not phosphosite_con or phosphosite_con == 0:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                             elif phosphosite_con ==  1:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif autophosphorylation == "exclude":
                             #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).all()
                             if not phosphosite_con or phosphosite_con == 0:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                             elif phosphosite_con ==  1:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-                        
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
 
 
                         #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).all()
@@ -801,13 +1237,18 @@ def get_ksea():
                             # weighted calculations
                             weights = numpy.array(confidence_list)
                             fcs = numpy.array(fc_list)
+                            if numpy.sum(weights) == 0:
+                                weighted_mean = float("nan")
+                                weighted_sd = float("nan")
+                                z = float("nan")
+                                p_value = float("nan")
+                            else:
+                                weighted_mean = numpy.average(fcs, weights=weights)
+                                weighted_sd = calculate_weighted_sd(fcs, weights)
 
-                            weighted_mean = numpy.average(fcs, weights=weights)
-                            weighted_sd = calculate_weighted_sd(fcs, weights)
-
-                            z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
-                            p_value = norm.sf(abs(z))
-                            cell_list = set(cell_list)
+                                z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
+                                p_value = norm.sf(abs(z))
+                                cell_list = set(cell_list)
                             #uniques_phos_list = set(phos_list)
                         
                             ksea_info = {
@@ -862,7 +1303,10 @@ def get_ksea():
                     #print(len(inter_list))
                     #print(len(inter_distinct))
 
-                    phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.cell_line==cell_line).all()
+                    if sid_score is None:
+                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.cell_line==cell_line).all()
+                    elif sid_score is not None:
+                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.cell_line==cell_line).filter(Experimental.sid <= sid_score).all()
 
                     phos_list = []
                     fc_list = []
@@ -889,15 +1333,26 @@ def get_ksea():
 
                     if autophosphorylation == "include" or not autophosphorylation:
                         if not phosphosite_con or phosphosite_con == 0:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif phosphosite_con ==  1:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                     elif autophosphorylation == "exclude":
                         if not phosphosite_con or phosphosite_con == 0:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif phosphosite_con ==  1:
-                            all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-                    
+                            if not sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                            elif sid_score:
+                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
 
 
 
@@ -990,13 +1445,18 @@ def get_ksea():
                         # weighted calculations
                         weights = numpy.array(confidence_list)
                         fcs = numpy.array(fc_list)
+                        if numpy.sum(weights) == 0:
+                            weighted_mean = float("nan")
+                            weighted_sd = float("nan")
+                            z = float("nan")
+                            p_value = float("nan")
+                        else:
+                            weighted_mean = numpy.average(fcs, weights=weights)
+                            weighted_sd = calculate_weighted_sd(fcs, weights)
 
-                        weighted_mean = numpy.average(fcs, weights=weights)
-                        weighted_sd = calculate_weighted_sd(fcs, weights)
-
-                        z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
-                        p_value = norm.sf(abs(z))
-                        cell_list = set(cell_list)
+                            z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
+                            p_value = norm.sf(abs(z))
+                            cell_list = set(cell_list)
                         #uniques_phos_list = set(phos_list)
                     
                         ksea_info = {
@@ -1055,7 +1515,10 @@ def get_ksea():
                         #print(len(inter_list))
                         #print(len(inter_distinct))
 
-                        phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).all()
+                        if sid_score is None:
+                            phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).all()
+                        elif sid_score is not None:
+                            phos_fc = session.query(Experimental.phosphosite, Experimental.fc).filter(Experimental.phosphosite.in_(inter_distinct)).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Experimental.sid <= sid_score).all()
 
                         phos_list = []
                         fc_list = []
@@ -1081,16 +1544,26 @@ def get_ksea():
 
                         if autophosphorylation == "include" or not autophosphorylation:
                             if not phosphosite_con or phosphosite_con == 0:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                             elif phosphosite_con ==  1:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                         elif autophosphorylation == "exclude":
                             if not phosphosite_con or phosphosite_con == 0:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
                             elif phosphosite_con ==  1:
-                                all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
-                        
-
+                                if not sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").all()
+                                elif sid_score:
+                                    all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).join(Phosphosite,Experimental.phosphosite == Phosphosite.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).filter(Interaction.source != Interaction.target).filter(Phosphosite.confidence == "High").filter(Interaction.modification == "phosphorylation").filter(Experimental.sid <= sid_score).all()
 
                         #all_info = session.query(Experimental, Interaction).join(Interaction,Experimental.phosphosite == Interaction.phosphosite_id).filter(Interaction.source == kinase).filter(Experimental.perturbation==inhibitor).filter(Experimental.cell_line==cell_line).all()
                         kin_list = []
@@ -1183,13 +1656,18 @@ def get_ksea():
                             # weighted calculations
                             weights = numpy.array(confidence_list)
                             fcs = numpy.array(fc_list)
+                            if numpy.sum(weights) == 0:
+                                weighted_mean = float("nan")
+                                weighted_sd = float("nan")
+                                z = float("nan")
+                                p_value = float("nan")
+                            else:
+                                weighted_mean = numpy.average(fcs, weights=weights)
+                                weighted_sd = calculate_weighted_sd(fcs, weights)
 
-                            weighted_mean = numpy.average(fcs, weights=weights)
-                            weighted_sd = calculate_weighted_sd(fcs, weights)
-
-                            z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
-                            p_value = norm.sf(abs(z))
-                            cell_list = set(cell_list)
+                                z = ((weighted_mean - p) * numpy.sqrt(len(fcs))) / weighted_sd
+                                p_value = norm.sf(abs(z))
+                                cell_list = set(cell_list)
                             #uniques_phos_list = set(phos_list)
                         
                             ksea_info = {

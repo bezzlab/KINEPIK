@@ -90,7 +90,7 @@ class Perturbation(Base):
     type = Column("Type", String(30))
     pubchem = Column("PubChem_CID", String(30))
     smiles = Column("SMILES", String(100))
-    synonyms = Column("Synonymns", String(1000))
+    synonyms = Column("Synonyms", String(1000))
     gene = Column("Gene", String(30), ForeignKey("Gene.Symbol"))
     action = Column("Action", String(30))
 
