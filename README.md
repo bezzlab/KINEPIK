@@ -75,8 +75,7 @@ KINEPIK
 │
 ├── testing
 │   ├── json_to_excel.py
-│   ├── testing_API.ipynb
-│   └── testing_KINEPIK.py
+│   └── testing_API.ipynb
 │
 ├── application.py
 ├── requirements.txt
