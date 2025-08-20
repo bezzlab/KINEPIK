@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en-UK">
+<head>
+    <title>KINEPIK</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+</head>
+
+<!-- Headers -->
+<body>
+    <div class="header">
+            <div class="header1">
+                <a href="{{ url_for('routes_bp.index') }}">
+                    <img class="web-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="KINEPIK logo">
+                </a>
+            </div>
+        
+            <div class="header3">
+                <ul>
+                    <li><a href="{{ url_for('routes_bp.index') }}">Home</a></li>
+                    <li><a href="{{ url_for('routes_bp.api') }}">API</a></li>
+                </ul>
+
+            </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main-container">
+        {% block content %} {% endblock %}
+    </div>
+
+
+    <!-- Footer -->
+    <div class="footer">
+        <div class="footer-left">
+            <h2>KINEPIK</h2>
+            <p>Integrated data resource for cell signalling research</p>
+        </div>
+
+        <div class="footer-right">
+            <img src="{{ url_for('static', filename='images/qm-logo.png') }}" alt="QMUL logo">
+        </div>
+    </div>
+
+</body>
+</html>

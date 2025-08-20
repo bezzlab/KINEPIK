@@ -20,6 +20,7 @@ class Protein(Base):
     id = Column("Uniprot_ID", String(30), primary_key=True)
     name = Column("Uniprot_name", String(30))
     kinase = Column("Kinase", Integer)
+    kinase_type = Column("Kinase_type", String(30))
     kinase_group = Column("Kinase_group", String(50))
     kinase_family = Column("Kinase_family", String(50))
     kinase_subfamily = Column("Kinase_subfamily", String(50))
@@ -89,7 +90,7 @@ class Perturbation(Base):
     type = Column("Type", String(30))
     pubchem = Column("PubChem_CID", String(30))
     smiles = Column("SMILES", String(100))
-    synonyms = Column("Synonymns", String(1000))
+    synonyms = Column("Synonyms", String(1000))
     gene = Column("Gene", String(30), ForeignKey("Gene.Symbol"))
     action = Column("Action", String(30))
 
@@ -100,7 +101,7 @@ class Perturbation_interaction(Base):
     target = Column("Target_protein", String(30), ForeignKey("Protein.Uniprot_ID"))
     score = Column("Score", Numeric(20, 15))
     cell_line = Column("Cell_line", String(30), ForeignKey("Cell_line.Name"))
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Subcell_location(Base):
     __tablename__ = "Subcell_location"
@@ -113,7 +114,7 @@ class Subcell_location(Base):
     confidence_c = Column("Confidence_score_C", Numeric(25, 20))
     cell_line = Column("Cell_line", String(30), ForeignKey("Cell_line.Name"))
     species = Column("Species", Integer)
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Tissue_location(Base):
     __tablename__ = "Tissue_location"
@@ -129,13 +130,13 @@ class Tissue_location(Base):
 class Experimental(Base):
     __tablename__ = "Experimental"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    perturbation = Column("Perturbation", String(30), ForeignKey("Perturbation.PubChem_CID"))
-    phosphosite = Column("Phosphosite", String(30))
+    perturbation = Column("Perturbation", String(30), ForeignKey("Perturbation.Name"))
+    phosphosite = Column("Phosphosite", String(30), ForeignKey("Phosphosite.Phosphosite_ID"))
     cell_line = Column("Cell_line",String(30), ForeignKey("Cell_line.Name"))
     fc = Column("Fold_change", Numeric(30, 25))
     p_value = Column("p_value", Numeric(30, 25))
     sid = Column("SID_score", Numeric(30, 25))
-    references = Column("Source", String(100))
+    references = Column("Source", String(100), ForeignKey("Study.id"))
 
 class Study(Base):
     __tablename__ = "Study"
@@ -145,6 +146,15 @@ class Study(Base):
     author = Column("Author", String(100))
     desc = Column("Description", String(500))
     link = Column("Link", String(100))
+
+class Known_perturbations(Base):
+    __tablename__ = "Known_perturbations"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kinase = Column("Kinase", String(30), ForeignKey("Protein.Uniprot_ID"))
+    perturbation = Column("Perturbation", String(50), ForeignKey("Perturbation.Name"))
+    source = Column("Source", Integer, ForeignKey("Study.id"))
+    score = Column("Score", Numeric(30,25))
+
 
 # generating the metadata for the db based on the ORMs
 Base.metadata.create_all(engine)

@@ -1,20 +1,16 @@
 from flask import Blueprint,jsonify, json, request, Response
 import pandas as pd
-from KINEPIK_app.database_con import session_local
+#from KINEPIK_app.database_con import session_local
+from KINEPIK_app.database_con import getSessionForVersion
 from KINEPIK_app.database_scripts.database_structure import Interaction, Phosphosite, Effect, Perturbation, Perturbation_interaction, Cell_line, Subcell_location, Tissue_location, Experimental, Protein, Gene
 
 # naming the blueprint
-protein_bp = Blueprint("protein_bp", __name__, url_prefix="/api/proteins")
+protein_bp = Blueprint("protein_bp", __name__, url_prefix="/api/<int:version>/proteins")
 
-@protein_bp.route("/info", methods = ["GET"])
-def instructions():
+@protein_bp.route("/info/results", methods = ["GET"])
+def instructions(version):
     '''This function hands out the user info about the possible parameters that can be given to the proteins queries. 
     The return returns the info from string/text to html which is then displayed to the user'''
-    # info = [{
-    #     "protein_ids" : "uniprot ID, if multiple use comma as a separator",
-    #     "fields" : "kinase, mappedgene"
-    # }]
-    # return jsonify(info)
 
     # information about the parameters
     protein_id_info = "protein_ids : uniprot ID, if multiple use comma as a separator"
@@ -33,12 +29,13 @@ def instructions():
     return Response(info, mimetype = "text/html")
 
 @protein_bp.route("/results", methods=["GET"])
-def get_protein():
+def get_protein(version):
     '''This function takes the url and based on the parameters given by the user, it will return information
     about the requested protein(s) in json format'''
 
     # creating a connection to the database
-    session = session_local()
+    Session = getSessionForVersion(version)
+    session = Session()
     # collecting the parameters given by the user in the url
     protein_ids = request.args.get("protein_ids")
     fields = request.args.get("fields")
@@ -54,6 +51,7 @@ def get_protein():
             protein_infos = []
             # going through the list of uniprot ids given by the user
             for protein_id in protein_ids:
+                protein_id = protein_id.upper()
                 #print(protein_id)
                 # collecting alll the info about the protein in the user's list from the Protein-table that is in the database
                 all_protein_info = session.query(Protein).filter_by(id=protein_id).first()

@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+
+{% block title %}KINEPIK API Documentation {% endblock %}
+
+{% block content %}
+    <div class="w3-sidebar w3-light-grey w3-bar-block">
+        <h3 class="w3-bar-item">API Documentation</h3>
+            <ul>
+                <li><a href="#Introduction" class="w3-bar-item w3-button">Introduction</a></li>
+                <li><a href="#Protein-routes" class="w3-bar-item w3-button">Protein-routes</a></li>
+                <li><a href="#Kinases-routes" class="w3-bar-item w3-button">Kinases-routes</a></li>
+                <li><a href="#Perturbation-routes" class="w3-bar-item w3-button">Perturbation-routes</a></li>
+                <li><a href="#SIF-routes" class="w3-bar-item w3-button">SIF-routes</a></li>
+            </ul>
+    </div>
+    <div class="content">
+
+        <div class="w3-container w3-teal">
+            <h1>KINEPIK API Documentation</h1>
+        </div>
+        <div id="Introduction" class="w3-container">
+            <h2>Introduction</h2>
+            <p>KINEPIK is an integrated data resource for cell signalling research. It also provides a programmatic access to the database with and API. This page will provide guides on how to use the different routes of the API as well as provide some examples of how to use the available routes.</p>
+            <p>All the possible parameters and how they can be used for each route can be found form kinepik.org/api/{database_version}/{main_route}/info/{specific_route}. For instance:</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/info/KSEA">kinepik.org/api/0/perturbation/info/KSEA</a></p>
+            <br>
+        </div>
+        <div id="Protein-routes" class="w3-container">
+            <h3>Protein-routes</h3>
+            <p>With this route the user can look for the proteins that are available in the database and collect general information regarding the proteins. There are options within the protein-route on what kind of data the user can get.</p>
+            <p><b>api/protein/results</b></p>
+            <p>This route will hand out general information regarding the protein/proteins that are queried by the user. The Uniprot IDs of the wanted proteins are given to protein_ids.</p>
+            <p><a href="https://kinepik.org/api/0/proteins/results?protein_ids=P42345">kinepik.org/api/0/proteins/results?protein_ids=P42345</a></p>
+            <p>In addition the results of this route can be edited with two different filters that are given to fields-filter, kinase and mappedgene.</p>
+            <p>With kinase-filter the kinase information regarding the protein will be displayed in the JSON. For example whether the protein is a kinase and if so to which family it belongs to.</p>
+            <p><a href="https://kinepik.org/api/0/proteins/results?protein_ids=P42345&fields=kinase">kinepik.org/api/0/proteins/results?protein_ids=P42345&fields=kinase</a></p>
+            <p>With mappedgene-filter the gene information regarding the protein is displayed. For instance, the gene name and the synonyms of it.</p>
+            <p><a href="https://kinepik.org/api/0/proteins/results?protein_ids=P42345&fields=mappedgene">kinepik.org/api/0/proteins/results?protein_ids=P42345&fields=mappedgene</a></p>
+            <br>
+        </div>
+        <div id="Kinases-routes" class="w3-container">
+            <h3>Kinases-routes</h3>
+            <p>With this route the user can look for the kinases that are available in the database and collect information regarding them. There are options within the kinase-route on what kind of data the user can get.</p>
+            <p><b>api/kinases/all</b></p>
+            <p>This route will hand out general information regarding all the kinases that are available in the database. The layout is similar to the protein-routes but this route only shows the proteins that are kinases.</p>
+            <p><a href="https://kinepik.org/api/0/kinases/all">kinepik.org/api/0/kinases/all</a></p>
+            <p>It is also possible to get phosphosites that are linked to the kinases, both the ones that are on the kinase and the ones the kinase targets. To get the phosphosite information on the JSON output phosphosite=1 needs to be added to the route:</p>
+            <p><a href="https://kinepik.org/api/0/kinases/all?phosphosites=1">kinepik.org/api/0/kinases/all?phosphosites=1</a></p>
+            <p><b>api/kinases/specific</b></p>
+            <p>This route requires a Uniprot ID or list of them, that are given to kinase_ids. The JSON output will give the phosphosites on the kinase and the ones that it targets.</p>
+            <p><a href="https://kinepik.org/api/0/kinases/specific?kinase_ids=P42345">kinepik.org/api/0/kinases/specific?kinase_ids=P42345</a></p>
+            <p>It is also possible to get only the sites on the kinase or the sites it targets separately with the phosphosites-filter:</p>
+            <p><a href="https://kinepik.org/api/0/kinases/specific?kinase_ids=P42345&phosphosites=targets">kinepik.org/api/0/kinases/specific?kinase_ids=P42345&phosphosites=targets</a></p>
+            <p><a href="https://kinepik.org/api/0/kinases/specific?kinase_ids=P42345&phosphosites=sites">kinepik.org/api/0/kinases/specific?kinase_ids=P42345&phosphosites=sites</a></p>
+            <p>On top of these filters, the phosphosites can be filtered based on the confidence of phosphosite identification. The confidence scores are from a study done by <a href="https://doi.org/10.1021/acs.jproteome.2c00131">Kalyuzhnyy et al. (2022)</a>. With the confidence-filter, it is possible to only get the high confidence phosphosites in the JSON output:</p>
+            <p><a href="https://kinepik.org/api/0/kinases/specific?kinase_ids=P42345&confidence=1">kinepik.org/api/0/kinases/specific?kinase_ids=P42345&confidence=1</a></p>
+            <br>
+        </div>
+        <div id="Perturbation-routes" class="w3-container">
+            <h3>Perturbation-routes</h3>
+            <p>With this route the user can look more into the available perturbations as well as, for example get KSEA and fc values from experimental data. There are different sub-routes within the perturbation-route that gives different outputs.</p>
+            <p><b>api/perturbation/all</b></p>
+            <p>This route will hand out all the available perturbations in the database.</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/all">kinepik.org/api/0/perturbation/all</a></p>
+            <p>Also since there are two different kinds of perturbations in the database, small molecules and gene knockouts, it is possible to get only the perturbations from one or the other catagory based on what is needed:
+            <p><a href="https://kinepik.org/api/0/perturbation/all?type=small_molecule">kinepik.org/api/0/perturbation/all?type=small_molecule</a></p>
+            <p><a href="https://kinepik.org/api/0/perturbation/all?type=knockout">kinepik.org/api/0/perturbation/all?type=knockout</a></p>
+            <p><b>api/perturbation/available</b></p>
+            <p>This route provides two different outputs. First one only uses either the perturbation name or Uniprot ids, and will show a list of target kinases or available pertubations.</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/available?name=P42345">kinepik.org/api/0/perturbation/available?name=P42345</a></p>
+            <p><a href="https://kinepik.org/api/0/perturbation/available?name=AZD3759">kinepik.org/api/0/perturbation/available?name=AZD3759</a></p>
+            <p>To access the known pertubations or the target kinases of certain perturbation, on top of the name-filter, confidence-filter needs to be used. When using this filter, a threshold that signals the remaining activity of the kinase will be given to the filter.</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/available?name=AZD3759&confidence=0.5">kinepik.org/api/0/perturbation/available?name=AZD3759&confidence=0.5</a></p>
+            <p><b>api/perturbation/fc</b></p>
+            <p>fc-route provides the log2 fold-change values for each phosphosite under different perturbations in the experimental data. The Uniprot ID is required for this route when searching phosphosites that are linked to certain kinase. If interested on a certain phosphosite then the phosphosite id is is inputed. Either of these options is given to id filter. To specify what type of data you want, type filter is used. With this filter it can be specified if the interest is the source kinase (source), target kinase (target_kinase) or a specific phosphosite (target_phosphosite). There are two different filters that can also be applied to this route:cell_line and confidence. There is currently experimental data for three different cell lines: MCF7, NTERA2 and HL60, and thus these can be used as a filter for cell_line. The other filter is the phosphosite confidence that has been described under kinases/specific-route section.</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/fc?type=target_phosphosite&id=Q9NSY1&cell_line=NTERA2&confidence=1">kinepik.org/api/0/perturbation/fc?kinase_id=Q9NSY1&cell_line=NTERA2&confidence=1</a></p>
+            <p><b>api/perturbation/KSEA</b></p>
+            <p>
+                KSEA-route provides the 
+                <span class="tooltip">
+                    KSEA-value
+                    <span class="tooltiptext">
+                        \( Z = \frac{(\bar{s} - \bar{p})\sqrt{m}}{\delta} \)
+                        <br><br>
+                        <b>Where:</b>
+                        \( \bar{s} \) = mean log2(fc) of substrates<br>
+                        \( \bar{p} \) = mean log2(fc) of all phosphosites<br>
+                        \( m \) = number of kinase-matched phosphosites<br>
+                        \( \delta \) = standard deviation of all log2(fc) values
+                    </span>
+                </span>
+                 as well as the values associated with it for the queried kinase and perturbation. The Uniprot ID is given to kinase_ids and the common name of the perturbation to perturbations. There are also various other filters that can be applied to this route:cell_line, autophosphorylation, weighted, sid-score and phosphosite_confidence. There is currently experimental data for three different cell lines: MCF7, NTERA2 and HL60, and thus these can be used as a filter for cell_line. Autophosphorylation includes or exludes selfphosphorylating interactions. Because the experimental data does only have the phosphosites ids and the associated kinase is connected through other sources, it is possible that the suggested kinase does not phosphorylate the site. Therefore weighted-filter can be applied that will provide weighted values based on the uniqueness of the kinase-phosphosite interaction and the reference score, that is calculated from the number of sources that support the interaction. Sid-filter refers to signal intensity-dependent confidence score (sid). A threshold can be given to sid-filter. The last filter is the phosphosite confidence that has been described under kinases/specific-route section.</p>
+            <p><a href="https://kinepik.org/api/0/perturbation/KSEA?kinase_ids=Q15208&perturbations=AZD3759&cell_line=MCF7">kinepik.org/api/0/perturbation/KSEA?kinase_ids=Q15208&perturbations=AZD3759&cell_line=MCF7</a></p>
+            <p><a href="https://kinepik.org/api/0/perturbation/KSEA?kinase_ids=P42345&perturbations=AZD3759&cell_line=MCF7&weighted=true&autophosphorylation=exclude&phosphosite_confidence=1&sid=0.05">kinepik.org/api/0/perturbation/KSEA?kinase_ids=P42345&perturbations=AZD3759&cell_line=MCF7&weighted=true&autophosphorylation=exclude&phosphosite_confidence=1&sid=0.05</a></p>
+            <br>
+        </div>
+        <div id="SIF-routes" class="w3-container">
+            <h3>SIF-routes</h3>
+            <p>SIF-route provides a results in a text format that can be converted to SIF-file format if need. This route can be used for example to create knowledge graphs since the interactions are prensented. There are two different SIF-file options:</p>
+            <p><b>api/sif/all</b></p>
+            <p>This route will give all the kinase-phosphosite/kinase-kinase interactions that are available in the database. In addition, when using this route, the level of interaction needs to be decided with the resolution-filter. It is possible to get the kinase-phosphosite interactions, that also include the phosphosite on kinase information, or only the kinase-kinase interactions.</p>
+            <p><a href="https://kinepik.org/api/0/sif/all?resolution=phosphosites">kinepik.org/api/sif/0/all?resolution=phosphosites</a></p>
+            <p><a href="https://kinepik.org/api/0/sif/all?resolution=kinases">kinepik.org/api/0/sif/all?resolution=kinases</a></p>
+            <p><b>api/sif/specific</b></p>
+            <p>This route will give requested the kinase-phosphosite/kinase-kinase interactions. Interactions will be given based on the Uniprot IDs that are given to kinase_ids. In addition, the resolution-filter is applied here similarly as above.</p>
+            <p><a href="https://kinepik.org/api/0/sif/specific?kinase_ids=P01133,P00533,P62993&resolution=phosphosites">kinepik.org/api/0/sif/specific?kinase_ids=P01133,P00533,P62993&resolution=phosphosites</a></p>
+            <p><b>api/sif/attributes</b></p>
+            <p>Attributes route provides attribute table for the corresponding SIF-route. To use the attribute-route, the same parameters has to be provided to it as well as the type of attributes requested. Note that when providing values to the kinases filter, if all-route used previously, all should be input here, and if list of Uniprot ids provided to the specific-route then the list will be added to the kinases-filter. There are three different types of attributes that can be acquired; IDs, type, known. IDs will provide the mapped gene symbols for the proteins and the phosphosites ids will be shown as duplicates since the id stays the same. Type provides information whether the id is linked to phosphosite, protein (that is not kinase) or kinase.</p>
+            <p><a href="https://kinepik.org/api/0/sif/attributes?kinases=P01133,P00533,P62993&resolution=phosphosites&type=IDs">https://kinepik.org/api/0/sif/attributes?kinases=P01133,P00533,P62993&resolution=phosphosites&type=IDs</a></p>
+            <br>
+        </div>
+            
+    </div>
+
+{% endblock %}
