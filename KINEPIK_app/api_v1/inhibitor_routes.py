@@ -47,6 +47,8 @@ def instructions(version,route):
     names = "names : Uniprot IDs or common names of perturbations"
     known = "known : true or false"
     confidence = "confidence : decimal number"
+    fc_type = "type : source, target_kinase, target_phosphosite"
+    id = "id : Uniprot ID (if type is source or target_kinase) or phosphosite ID (if type target_phosphosite)"
     # the format of the html page for all route
     if route == "all":
         info = f"""
@@ -81,7 +83,8 @@ def instructions(version,route):
         info = f"""
         <html>
             <body>
-                <p>{kinase_ids}</p>
+                <p>{id}</p>
+                <p>{type}</p>
                 <p>{cell_lines}</p>
                 <p>{phosphosite_confidence}</p>
             </body>
