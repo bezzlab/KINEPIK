@@ -1,6 +1,6 @@
 # KINEPIK
 ## Overview
-KINEPIK is an integrated data resource for cell signalling research. It combines multiple data sources together into one database that is programmatically accessible through an API. The data is collected both through publicly available APIs, like Omnipath, Uniprot and PubChem, but also through multiple different supplementary materials of relevant research articles. KINEPIK is publicly available at kinepik.org.
+KINEPIK is an integrated data resource for cell signalling research. It combines multiple data sources together into one database that is programmatically accessible through an API. The data is collected both through publicly available APIs, like Omnipath, Uniprot and PubChem, but also through multiple different supplementary materials of relevant research articles. KINEPIK is publicly available at [kinepik.org](https://kinepik.org).
 
 ## Features
 - Unified database of kinases, perturbations, phosphosites, and their interactions
@@ -80,7 +80,7 @@ KINEPIK
 ├── application.py
 ├── requirements.txt
 ├── update_KINEPIK.py
-├── KINEPIK_v0.db
+├── KINEPIK_v0.db    # preferred version of the database
 └── KINEPIK_version.db
 ```
 
@@ -94,7 +94,7 @@ Once the app is running locally:
 
 - Get interactions in SIF file format at phosphosite resolution:  
   `http://127.0.0.1:5000/api/0/sif/all?resolution=phosphosite`
-
+More examples and guidance can be found from KINEPIK's [API Documentation](https://kinepik.org/api).
 
 ## Deployment
 To deploy the application, follow this folder structure:
